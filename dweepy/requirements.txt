@@ -1,4 +1,0 @@
-# Dweepy test requirements
-
-requests >= 2, < 3
-pytest >= 2.6.4
