@@ -42,16 +42,30 @@ def _listen_for_dweets_from_response(response):
     """Yields dweets as received from dweet.io's streaming API
     """
     streambuffer = ''
+
+    skipping = True
+
     for byte in response.iter_content():
         if byte:
-            streambuffer += byte.decode('ascii')
-            try:
-                dweet = json.loads(streambuffer.splitlines()[1])
-            except (IndexError, ValueError):
-                continue
-            if isstr(dweet):
-                yield json.loads(dweet)
-            streambuffer = ''
+            b = byte.decode('ascii')
+
+            # Skip garbage in dweet.io response
+            if skipping:
+                if b != "\"":
+                    continue
+                else:
+                    skipping = False
+
+            streambuffer += b
+
+            for line in streambuffer.splitlines():
+                try:
+                    dweet = json.loads(line)
+                except (IndexError, ValueError):
+                    continue
+                if isstr(dweet):
+                    yield json.loads(dweet)
+                    streambuffer = ''
 
 
 def listen_for_dweets_from(thing_name, timeout=900, key=None):
