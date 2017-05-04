@@ -27,118 +27,110 @@ class DweepyThreadListener(object):
 
 _discovery_things = {}
 
-def _discovery_advertise(discovery_thing, thing, type, name, adv_data):
-    while 1:
+class Discovery(object):
+    def __init__(self, discovery_thing, name = ''):
+        self.discovery_thing = discovery_thing
+        self.name = name
+        self.listener = DweepyThreadListener(discovery_thing, self._discovery_cb)
+        self.things = []
+
+        print('Registering new discovery service \'' + name + '\' on ' + discovery_thing)
+
+    def add_thing(self, thing, type, name, adv_data):
+        print('Adding \'' + name  + '\' on ' + thing + ' to the discovery service ' + self.discovery_thing)
+        self.things.append({
+            'name' : name,
+            'self' : thing,
+            'type' : type,
+            'adv_data' : adv_data,
+            'lookups' : [] # List of desired things to lookup for
+        })
+
+    def start_lookup(self, thing, type, name, callback):
+        for reg_thing in self.things:
+            if reg_thing['self'] == thing:
+                reg_thing['lookups'].append({
+                    'type'          : type,
+                    'name'          : name,
+                    'cb'            : callback
+                })
+
+        while 1:
+            try:
+                print('Lookup for ' + type + ' on ' + self.discovery_thing)
+                dweepy.dweet_for(self.discovery_thing, {
+                    'method'    : 'lookup',
+                    'type'      : type,
+                    'self'      : thing,
+                    'name'      : name,
+                    'ts'        : time.time()
+                })
+
+                return
+            except Exception as e:
+                delay = random.randint(2, 10)
+                print('Restarting lookup in ' + str(delay) + ' seconds due to error: ' + str(e))
+                time.sleep(random.randint(2, 10))
+
+    def stop_lookup(self, thing, type):
+        for reg_thing in self.things:
+            if reg_thing == thing:
+                reg_thing['lookups'] = [it for it in reg_thing['lookups'] if reg_thing['lookups']['type'] != type]
+
+    def _advertise(self, thing, type, name, adv_data):
+        while 1:
+            try:
+                print('Advertising ' + type + ' on ' + thing + ' with data: ' + str(adv_data))
+                dweepy.dweet_for(self.discovery_thing, {
+                    'method'    : 'advertise',
+                    'type'      : type,
+                    'self'      : thing,
+                    'name'      : name,
+                    'adv_data'  : adv_data,
+                    'ts'        : time.time()
+                })
+
+                return
+            except Exception as e:
+                delay = random.randint(2, 10)
+                print('Restarting advertise in ' + str(delay) + ' seconds due to error: ' + str(e))
+                time.sleep(delay)
+
+    def _discovery_cb(self, data):
         try:
-            print('Advertising ' + type + ' on ' + thing + ' with data: ' + str(adv_data))
-            dweepy.dweet_for(discovery_thing, {
-                'method'    : 'advertise',
-                'type'      : type,
-                'self'      : thing,
-                'name'      : name,
-                'adv_data'  : adv_data,
-                'ts'        : time.time()
-            })
+            method = data['content']['method']
+            type = data['content']['type']
 
-            return
+            if method == 'lookup':
+                print('Received lookup reqest for type: ' + type)
+
+                for thing in self.things:
+                    if thing['type'] == type:
+                        self._advertise(thing['self'], type, thing['name'], thing['adv_data'])
+
+            if method == 'advertise':
+                print('Received advertise packet of: ' + type)
+
+                for thing in self.things:
+                    for desired in thing['lookups']:
+                        if desired['type'] == type:
+                            desired['cb'](data['content'])
+
         except Exception as e:
-            delay = random.randint(2, 10)
-            print('Restarting advertise in ' + str(delay) + ' seconds due to error: ' + str(e))
-            time.sleep(delay)
-
-def _discovery_start_lookup(discovery_thing, thing, type, name, callback):
-    for reg_thing in _discovery_things[discovery_thing]['things']:
-        if reg_thing['self'] == thing:
-            reg_thing['lookups'].append({
-                'type'          : type,
-                'name'          : name,
-                'cb'            : callback
-            })
-
-    while 1:
-        try:
-            print('Lookup for ' + type + ' on ' + discovery_thing)
-            dweepy.dweet_for(discovery_thing, {
-                'method'    : 'lookup',
-                'type'      : type,
-                'self'      : thing,
-                'name'      : name,
-                'ts'        : time.time()
-            })
-
-            return
-        except Exception as e:
-            delay = random.randint(2, 10)
-            print('Restarting lookup in ' + str(delay) + ' seconds due to error: ' + str(e))
-            time.sleep(random.randint(2, 10))
-
-def _discovery_stop_lookup(discovery_thing, thing, type):
-    for reg_thing in _discovery_things[discovery_thing]['things']:
-        if reg_thing == thing:
-            reg_thing['lookups'] = [it for it in reg_thing['lookups'] if reg_thing['lookups']['type'] != type]
-
-def _discovery_callback(data):
-    try:
-        method = data['content']['method']
-        type = data['content']['type']
-        discovery_thing = data['thing'] # Discovery thing that emitted message
-
-        if not discovery_thing in _discovery_things:
-            print('Unknown discovery thing: ' + discovery_thing + ' . Ignoring packet')
-            return
-
-        if method == 'lookup':
-            print('Received lookup reqest for type: ' + type)
-            things = _discovery_things[discovery_thing]['things']
-
-            for thing in things:
-                if thing['type'] == type:
-                    _discovery_advertise(discovery_thing,
-                            thing['self'], type,
-                            thing['name'], thing['adv_data'])
-
-        if method == 'advertise':
-            print('Received advertise packet of: ' + type)
-            things = _discovery_things[discovery_thing]['things']
-
-            for thing in things:
-                for desired in thing['lookups']:
-                    if desired['type'] == type:
-                        desired['cb'](data['content'])
-
-    except Exception as e:
-        print(e)
-        print('Invalid data on the channel! ' + str(data))
-
-def _discovery_add_service(discovery_thing, name = ''):
-    print('Registering new discovery service \'' + name + '\' on ' + discovery_thing)
-    _discovery_things[discovery_thing] = {
-        'name' : name,
-        'listener' : DweepyThreadListener(discovery_thing, _discovery_callback),
-        'things' : []
-    }
-
-def _discovery_add_thing(discovery_thing, thing, type, name, adv_data):
-    print('Adding \'' + name  + '\' on ' + thing + ' to the discovery service ' + discovery_thing)
-    _discovery_things[discovery_thing]['things'].append({
-        'name' : name,
-        'self' : thing,
-        'type' : type,
-        'adv_data' : adv_data,
-        'lookups' : [] # List of desired things to lookup for
-    })
+            print(e)
+            print('Invalid data on the channel! ' + str(data))
 
 ################################################################################
 
 class Sensor(object):
-    def __init__(self, name, discovery_thing):
+    def __init__(self, name, discovery):
         self.ctrl_data_lock = threading.Lock()
         self.ctrl_data = collections.deque(maxlen = 32)
         self.name = name
-        self.discovery_thing = discovery_thing
+        self.discovery = discovery
         self.uuid = str(uuid.uuid1())
-        self.uuid_rt_data = discovery_thing + '.' + self.uuid + '.rt_data'
-        self.uuid_ctrl = discovery_thing + '.' + self.uuid + '.ctrl'
+        self.uuid_rt_data = discovery.discovery_thing + '.' + self.uuid + '.rt_data'
+        self.uuid_ctrl = discovery.discovery_thing + '.' + self.uuid + '.ctrl'
         self.listeners = []
 
         print('Registered sensor data stream on: ' + self.uuid_rt_data)
@@ -147,7 +139,7 @@ class Sensor(object):
         adv_data = { 'rt_data' : self.uuid_rt_data, 'ctrl' : self.uuid_ctrl }
 
         self.listeners.append(DweepyThreadListener(self.uuid_ctrl, self._ctrl_callback))
-        _discovery_add_thing(discovery_thing, self.uuid, 'sensor', name, adv_data)
+        self.discovery.add_thing(self.uuid, 'sensor', name, adv_data)
 
     def _ctrl_callback(self, data):
         with self.ctrl_data_lock:
@@ -164,14 +156,14 @@ class Sensor(object):
                 return None
 
 class View(object):
-    def __init__(self, name, discovery_thing):
+    def __init__(self, name, discovery):
         self.name = name
-        self.discovery_thing = discovery_thing
+        self.discovery = discovery
         self.uuid = str(uuid.uuid1())
 
         print('Registered view on: ' + self.uuid)
         adv_data = { 'noop' : 'noop' }
-        _discovery_add_thing(discovery_thing, self.uuid, 'view', name, adv_data)
+        discovery.add_thing(self.uuid, 'view', name, adv_data)
 
     def lookup_sensors(self, name = '*', lookup_time = 15):
         sensors = []
@@ -183,15 +175,15 @@ class View(object):
 
             sensors.append({ 'thing' : thing, 'name' : name, 'adv_data' : adv_data })
 
-        _discovery_start_lookup(self.discovery_thing, self.uuid, 'sensor', name, lookup_cb)
+        self.discovery.start_lookup(self.uuid, 'sensor', name, lookup_cb)
         time.sleep(lookup_time)
-        _discovery_stop_lookup(self.discovery_thing, self.uuid, 'sensor')
+        self.discovery.stop_lookup(self.uuid, 'sensor')
 
         return sensors
 
-    def listen_for_sensor_data(self, sensor_data):
+    def listen_for_sensor_data(self, sensor_data, timeout=100):
         print('Listening for data from: ' + sensor_data['adv_data']['rt_data'])
-        for data in dweepy.listen_for_dweets_from(sensor_data['adv_data']['rt_data']):
+        for data in dweepy.listen_for_dweets_from(sensor_data['adv_data']['rt_data'], timeout):
             retval = data['content']
             yield retval
 

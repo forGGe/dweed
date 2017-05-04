@@ -18,15 +18,13 @@ from bokeh.application.handlers import FunctionHandler
 from bokeh.application import Application
 from bokeh.layouts import column
 from bokeh.models import ColumnDataSource, Slider
-from bokeh.server.server import Server
-from bokeh.server.server import BokehTornado
-
+from bokeh.server.server import Server, BokehTornado
 
 from tornado import gen
 
 def do_sensor():
-    discovery = 'd1e7a182-9f8a-440d-b9f8-13737b1e4f37'
-    dweed._discovery_add_service(discovery, 'test_discovery')
+    discovery_uuid = 'd1e7a182-9f8a-440d-b9f8-13737b1e4f37'
+    discovery = dweed.Discovery(discovery_uuid, 'test_discovery')
     sensor = dweed.DweetExchange.get_thing('sensor', 'test_sensor', discovery)
 
     while True:
@@ -67,7 +65,7 @@ class Plotter:
                     last = { 'x' : [ ds.data['x'][-1] ], 'y' : [ ds.data['y'][-1] ] }
 
                 if new != last:
-                    print('> New data arrived')
+                    print('Displaying new data')
                     ds.stream(new)
 
             p = figure(plot_width=1200, plot_height=400)
@@ -77,7 +75,6 @@ class Plotter:
 
             doc.add_root(p)
 
-        print('Plotter!')
         io_loop = IOLoop.current()
         bokeh_app = Application(FunctionHandler(plotter))
         server = Server({'/': bokeh_app}, io_loop=io_loop, host="*")
@@ -94,8 +91,8 @@ def do_view():
     p = Plotter()
 
     def do_discovery():
-        discovery = 'd1e7a182-9f8a-440d-b9f8-13737b1e4f37'
-        dweed._discovery_add_service(discovery, 'test_discovery')
+        discovery_uuid = 'd1e7a182-9f8a-440d-b9f8-13737b1e4f37'
+        discovery = dweed.Discovery(discovery_uuid, 'test_discovery')
         view = dweed.DweetExchange.get_thing('view', 'test_view', discovery)
 
         while True:
@@ -105,9 +102,12 @@ def do_view():
                 print(sensors)
 
                 # Get some data
-                for data in view.listen_for_sensor_data(sensors[0]):
-                    print(data)
-                    p.add_point(data['ts'], data['moisture'])
+                try:
+                    for data in view.listen_for_sensor_data(sensors[0], 20):
+                        print(data)
+                        p.add_point(data['ts'], data['moisture'])
+                except:
+                    pass
 
     thread = Thread(target=do_discovery)
     thread.start()
