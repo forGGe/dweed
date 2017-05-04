@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import dweed
 import sys
 import time

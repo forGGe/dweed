@@ -6,7 +6,6 @@ import time
 import collections
 import threading
 import random
-import sys
 
 class DweepyThreadListener(object):
     def __init__(self, thing, callback, timeout=32):
@@ -166,7 +165,7 @@ class View(object):
         adv_data = { 'noop' : 'noop' }
         discovery.add_thing(self.uuid, 'view', name, adv_data)
 
-    def lookup_sensors(self, name = '*', lookup_time = 10):
+    def lookup_sensors(self, name = '*', lookup_time = 15):
         sensors = []
 
         def lookup_cb(sensor_data):
@@ -182,9 +181,9 @@ class View(object):
 
         return sensors
 
-    def listen_for_sensor_data(self, sensor_data, stream_timeout=31557600):
+    def listen_for_sensor_data(self, sensor_data, timeout=100):
         print('Listening for data from: ' + sensor_data['adv_data']['rt_data'])
-        for data in dweepy.listen_for_dweets_from(sensor_data['adv_data']['rt_data'], stream_timeout):
+        for data in dweepy.listen_for_dweets_from(sensor_data['adv_data']['rt_data'], timeout):
             retval = data['content']
             yield retval
 
