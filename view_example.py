@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 import dweed
 import sys
 import time
@@ -12,32 +10,10 @@ from tornado.ioloop import IOLoop
 
 from bokeh.models import ColumnDataSource
 from bokeh.plotting import curdoc, figure
-from bokeh.driving import linear
-from bokeh.client import push_session
-from bokeh.application.handlers import FunctionHandler
 from bokeh.application import Application
-from bokeh.layouts import column
-from bokeh.models import ColumnDataSource, Slider
+from bokeh.application.handlers import FunctionHandler
+from bokeh.models import ColumnDataSource
 from bokeh.server.server import Server, BokehTornado
-
-from tornado import gen
-
-def do_sensor():
-    discovery_uuid = 'd1e7a182-9f8a-440d-b9f8-13737b1e4f37'
-    discovery = dweed.Discovery(discovery_uuid, 'test_discovery')
-    sensor = dweed.DweetExchange.get_thing('sensor', 'test_sensor', discovery)
-
-    while True:
-        data = {'moisture' : random.randint(0,100), 'ts' : time.time()}
-        print('Sending ' + str(data))
-        sensor.send_data(data)
-
-        ctrl = sensor.get_ctrl_data()
-
-        if ctrl:
-            print('Received ' + str(ctrl))
-
-        time.sleep(1)
 
 class Plotter:
     def __init__(self):
@@ -83,38 +59,42 @@ class Plotter:
 
         print('Opening Bokeh application on http://localhost:5006/')
 
-        io_loop.add_callback(server.run_until_shutdown)
+        io_loop.add_callback(server.show, '/')
         io_loop.start()
 
+def do_discovery():
+    # Discovery id is supplied by user
+    discovery_id = sys.argv[1]
 
-def do_view():
-    p = Plotter()
+    # Advertise view via given dicsovery
+    discovery = dweed.Discovery(discovery_id, 'test_discovery')
+    view = dweed.DweetExchange.get_thing('view', 'test_view', discovery)
 
-    def do_discovery():
-        discovery_uuid = 'd1e7a182-9f8a-440d-b9f8-13737b1e4f37'
-        discovery = dweed.Discovery(discovery_uuid, 'test_discovery')
-        view = dweed.DweetExchange.get_thing('view', 'test_view', discovery)
+    while True:
+        # Find some sensors
+        sensors = view.lookup_sensors()
 
-        while True:
-            sensors = view.lookup_sensors()
+        # Sensors found
+        if sensors:
+            print(sensors)
 
-            if sensors:
-                print(sensors)
+            try:
+                # Get some sensor data
+                for data in view.listen_for_sensor_data(sensors[0]):
+                    print(data)
 
-                # Get some data
-                try:
-                    for data in view.listen_for_sensor_data(sensors[0], 20):
-                        print(data)
-                        p.add_point(data['ts'], data['moisture'])
-                except:
-                    pass
+                    # Pass data to plotter
+                    p.add_point(data['ts'], data['moisture'])
+            except Exception as e:
+                print("Restarting lookup: " + str(e))
+                pass
 
-    thread = Thread(target=do_discovery)
-    thread.start()
+# Create plotter
+p = Plotter()
 
-    p.start()
+# Do the dweed work in separate thread
+thread = Thread(target=do_discovery)
+thread.start()
 
-if sys.argv[1] == 'view':
-    do_view()
-elif sys.argv[1] == 'sensor':
-    do_sensor()
+# Start plotting
+p.start()
